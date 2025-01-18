@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Detection using CNN language </title>
+    <style>
+        #imagePreview {
+            max-width: 50%;
+            height: auto;
+        }
+        #results {
+            margin-top: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Face Detection  using CNN language</h1>
+    <input type="file" id="imageInput" accept="image/*">
+    <button onclick="detectFaces('cnn')">Detect Faces (CNN)</button>
+    <button onclick="detectFaces('opencv')">Detect Faces (OpenCV)</button>
+    <div>
+        <canvas id="imagePreview"></canvas>
+    </div>
+    <div id="results"></div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const canvas = document.getElementById('imagePreview');
+        const ctx = canvas.getContext('2d');
+        const resultsDiv = document.getElementById('results');
+
+        // Image preview function
+        imageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        // Detect faces based on the selected method
+        async function detectFaces(method) {
+            const file = imageInput.files[0];
+            if (!file) {
+                alert('Please select an image first.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                const response = await fetch(`http://localhost:5000/detect_faces_${method}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                // Clear previous results
+                resultsDiv.innerHTML = '';
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Redraw the image
+                const img = new Image();
+                img.onload = function() {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+                };
+                img.src = URL.createObjectURL(file);  // Draw the file onto the canvas
+
+                // Handle the results based on the detection method
+                if (method === 'cnn') {
+                    handleCNNResult(result);
+                } else {
+                    handleOpenCVResult(result);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                resultsDiv.innerHTML = `<p class="error">Error: ${error.message}. Please check if the server is running and try again.</p>`;
+            }
+        }
+
+        // Handle CNN detection results
+        function handleCNNResult(result) {
+            if (result.face_detected) {
+                ctx.strokeStyle = 'red';
+                ctx.lineWidth = 2;
+                const { x, y, width, height } = result.bounding_box;
+                ctx.strokeRect(x, y, width, height);
+                
+                resultsDiv.innerHTML = `
+                    <p>Face detected with ${(result.confidence * 100).toFixed(2)}% confidence</p>
+                `;
+            } else {
+                resultsDiv.innerHTML = `
+                    <p>No face detected. Confidence: ${(result.confidence * 100).toFixed(2)}%</p>
+                `;
+            }
+        }
+
+        // Handle OpenCV detection results
+        function handleOpenCVResult(result) {
+            if (result.face_detected === false) {
+                resultsDiv.innerHTML = '<p>No faces detected</p>';
+            } else {
+                ctx.strokeStyle = 'blue';
+                ctx.lineWidth = 2;
+                result.forEach((face, index) => {
+                    const { x, y, width, height } = face.bounding_box;
+                    ctx.strokeRect(x, y, width, height);
+                });
+                
+                resultsDiv.innerHTML = `
+                    <p>${result.length} face(s) detected</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>  
